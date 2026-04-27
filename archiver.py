@@ -6,7 +6,7 @@ from io import BufferedReader, BufferedWriter
 CHUNK_SIZE = 65536  # Сканируем по 64КБ для избежания заполнения памяти
 
 
-def _pack_file(f_out: BufferedWriter, file_path: str):
+def _pack_file(f_out: BufferedWriter, file_path: str) -> None:
     """Вспомогательная функция для записи одного файла в архив"""
     dir_path = os.path.basename(file_path)
     name_bytes = dir_path.encode("utf-8")
@@ -39,9 +39,8 @@ def _write_file_data(
         bytes_left -= len(chunk)
 
 
-def create_archive(archive_name: str, dir_path: str):
+def create_archive(archive_name: str, dir_path: str) -> int:
     if not os.path.isdir(dir_path):
-        print(f"Ошибка: {dir_path} не является папкой.")
         return 1
 
     with open(archive_name, "wb") as f_out:
@@ -49,23 +48,20 @@ def create_archive(archive_name: str, dir_path: str):
             file_path = os.path.join(dir_path, filename)
             if os.path.isfile(file_path):
                 _pack_file(f_out, file_path)
-    print(f"Архив {archive_name} успешно создан из папки {dir_path}.")
+    return 0
 
 
-def add_file_to_archive(archive_name: str, file_path: str):
+def add_file_to_archive(archive_name: str, file_path: str) -> int:
     if not os.path.exists(archive_name) or not os.path.exists(file_path):
-        print("Ошибка, не существует файла, который вы хотите добавить, или архива")
         return 1
-
     with open(archive_name, "ab") as f_out:  # ab - режим дозаписи в архив
         _pack_file(f_out, file_path)
-    print(f"Файл {file_path} успешно добавлен в {archive_name}.")
+    return 0
 
 
-def rm_file_from_archive(archive_name: str, file_path: str):
+def rm_file_from_archive(archive_name: str, file_path: str) -> int:
     if not os.path.exists(archive_name):
-        print("Ошибка: архив не существует")
-        return 1
+        return 2
 
     temp_archive = archive_name + ".tmp"
     file_deleted = False
@@ -88,6 +84,7 @@ def rm_file_from_archive(archive_name: str, file_path: str):
                 # Пропускаем файл перепрыгиванием на определенный офсет
                 f_in.seek(file_size, os.SEEK_CUR)
                 file_deleted = True
+                continue
             else:
                 f_out.write(name_len_bytes)
                 f_out.write(name_bytes)
@@ -96,13 +93,16 @@ def rm_file_from_archive(archive_name: str, file_path: str):
 
     # Проверка на то, что файл удалился, если нет, то выводим ошибку
     if file_deleted:
-        print(f"{file_path} успешно удален из {archive_name}.")
         os.replace(temp_archive, archive_name)
+        return 0
     else:
-        print("Ошибка, не получилось удалить файл")
+        return 1
 
 
-def unpack_archive(archive_name: str, folder_path: str):
+def unpack_archive(archive_name: str, folder_path: str) -> int:
+    if not os.path.exists(archive_name):
+        return 1
+
     """Извлекает все файлы из архива в указанную папку"""
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -124,8 +124,7 @@ def unpack_archive(archive_name: str, folder_path: str):
             out_path = os.path.join(folder_path, file_name)
             with open(out_path, "wb") as f_out:
                 _write_file_data(f_in, f_out, file_size)
-
-    print(f"Архив {archive_name} успешно распакован в {folder_path}.")
+    return 0
 
 
 if __name__ == "__main__":
@@ -144,10 +143,33 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.action == "create":
-        create_archive(args.filename, args.path)
+        err = create_archive(args.filename, args.path)
+        if err:
+            print(f"Ошибка: {args.filename} не является папкой.")
+        else:
+            print(f"Архив {args.filename} успешно создан из папки {args.path}.")
+
     elif args.action == "add":
-        add_file_to_archive(args.filename, args.path)
+        err = add_file_to_archive(args.filename, args.path)
+        if err:
+            print("Ошибка, не существует файла, который вы хотите добавить, или архива")
+        else:
+            print(
+                f"Файл {os.path.basename(args.path)} успешно добавлен в {args.filename}."
+            )
+
     elif args.action == "rm":
-        rm_file_from_archive(args.filename, args.path)
+        err = rm_file_from_archive(args.filename, args.path)
+        if err == 1:
+            print("Ошибка, не получилось удалить файл")
+        elif err == 2:
+            print("Ошибка: архив не существует")
+        else:
+            print(f"{os.path.basename(args.path)} успешно удален из {args.filename}.")
+
     else:
-        unpack_archive(args.filename, args.path)
+        err = unpack_archive(args.filename, args.path)
+        if err:
+            print(f"Ошибка, архив {args.filename} не найден/не существует")
+        else:
+            print(f"Архив {args.filename} успешно распакован в {args.path}.")
